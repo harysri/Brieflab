@@ -88,9 +88,9 @@ screenshots/
 
 ### Home Screen
 
-![Home — Header](./screenshots/home-1.png)
-![Home — Features](./screenshots/home-2.png)
-![Home — Workspace Panel](./screenshots/home-3.png)
+![Home — Header](./screenshots/home.png)
+![Home — Features](./screenshots/home2.png)
+![Home-Tutorial](./screenshots/home3.png)
 
 ### Workspace & Analysis
 

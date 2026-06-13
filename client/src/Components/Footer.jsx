@@ -4,7 +4,7 @@ const Footer = () => {
   const social = [
     {
       name: "GitHub",
-      href: "#",
+      href: "https://github.com/harysri/Brieflab",
       icon: (props) => (
         <svg fill="currentColor" viewBox="0 0 24 24" {...props}>
           <path
@@ -41,14 +41,14 @@ const Footer = () => {
           {/* Links */}
           <div className="flex items-center gap-8">
             <a
-              href="#"
+              href="https://github.com/harysri/Brieflab/blob/main/README.md"
               className="text-sm text-slate-400 hover:text-cyan-400 transition-colors duration-200"
             >
               Documentation
             </a>
             <div className="w-px h-4 bg-slate-700"></div>
             <a
-              href="#"
+              href="https://github.com/harysri/Brieflab"
               className="text-sm text-slate-400 hover:text-cyan-400 transition-colors duration-200 flex items-center gap-2"
             >
               <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
