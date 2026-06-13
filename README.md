@@ -113,7 +113,7 @@ screenshots/
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/brieflab.git
+git clone https://github.com/harysri/Brieflab.git
 cd brieflab
 ```
 
