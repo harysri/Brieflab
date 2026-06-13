@@ -74,8 +74,6 @@ The frontend communicates with the FastAPI backend via REST endpoints. The backe
 
 ## Screenshots
 
-> **Tip:** Create a `screenshots/` folder in the project root and add your images here.
-
 ```md
 screenshots/
 ├── home-1.png
@@ -114,7 +112,7 @@ screenshots/
 
 ```bash
 git clone https://github.com/harysri/Brieflab.git
-cd brieflab
+cd Brieflab
 ```
 
 ### Backend Setup
@@ -302,7 +300,7 @@ Deploy the `client/dist/` folder to any static host (Vercel, Netlify, Cloudflare
 
 ```bash
 cd backend
-docker build -t brieflab-api .
+docker build -t Brieflab-api .
 ```
 
 Deploy as a container to any cloud provider (Railway, Fly.io, AWS ECS, etc.).
