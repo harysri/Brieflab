@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+
+# Python virtual environment
+.venv/
+backend/.venv/
+
+# Environment & Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Keep example env files
+!.env.example
+
+# Build Artifacts
+client/dist/
+dist/
+*.egg-info/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.suo
+*.user
+*.sublime-workspace
+
+# OS Files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Runtime & Logs
+*.log
+logs/
+
+# Tool Cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pip/
