@@ -1,5 +1,5 @@
 """
-LLM service — Qwen2.5 via Ollama using LangChain's Ollama integration.
+LLM service — Llama 3.2 via Ollama using LangChain's Ollama integration.
 
 Two tasks:
   1. summarize(text)         → concise bullet-point summary
