@@ -12,9 +12,8 @@
     <img src="https://img.shields.io/badge/Ollama-0.1-000000?style=flat-square&logo=ollama" alt="Ollama" />
   </p>
 </div>
-
 ---
-
+![Home Page Screenshot](./screenshots/home.png)
 ## Description
 
 Brieflab is a full-stack AI application that lets you paste a YouTube video or online article URL and instantly get a concise summary. Beyond summarization, you can ask follow-up questions directly to the content using a **Retrieval-Augmented Generation (RAG)** pipeline — no hallucinations, just grounded answers with source citations.
@@ -73,16 +72,6 @@ The frontend communicates with the FastAPI backend via REST endpoints. The backe
 ---
 
 ## Screenshots
-
-```md
-screenshots/
-├── home-1.png
-├── home-2.png
-├── home-3.png
-├── workspace.png
-├── chat.png
-└── mobile.png
-```
 
 ### Home Screen
 
