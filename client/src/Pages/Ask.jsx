@@ -1,5 +1,14 @@
+//new code with formatresponse
+
 // import React, { useState, useRef, useEffect } from "react";
 // import { Link } from "react-router-dom";
+// import ReactMarkdown from "react-markdown";
+// import remarkGfm from "remark-gfm";
+// import remarkMath from "remark-math";
+// import rehypeKatex from "rehype-katex";
+// import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+// import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+// import "katex/dist/katex.min.css";
 
 // const Ask = () => {
 //   const [urls, setUrls] = useState([""]);
@@ -11,6 +20,7 @@
 //   const [messages, setMessages] = useState([]);
 //   const [inputMessage, setInputMessage] = useState("");
 //   const [sidebarOpen, setSidebarOpen] = useState(true);
+//   const [copiedId, setCopiedId] = useState(null);
 //   const chatEndRef = useRef(null);
 
 //   const scrollToBottom = () => {
@@ -20,6 +30,20 @@
 //   useEffect(() => {
 //     scrollToBottom();
 //   }, [messages]);
+
+//   const handleCopy = async (text, id) => {
+//     try {
+//       await navigator.clipboard.writeText(text);
+//       setCopiedId(id);
+//       setTimeout(() => setCopiedId(null), 2000);
+//     } catch (err) {
+//       console.error("Failed to copy text: ", err);
+//     }
+//   };
+
+//   const handleEdit = (text) => {
+//     setInputMessage(text);
+//   };
 
 //   const handleAddUrl = () => {
 //     setUrls([...urls, ""]);
@@ -73,7 +97,6 @@
 //     }
 //   };
 
-//   // POST /api/analyze -> { sources: [ { source, summary, ... } ] }
 //   const analyzeUrls = async (validUrls) => {
 //     const res = await fetch("http://localhost:8000/api/analyze", {
 //       method: "POST",
@@ -88,12 +111,10 @@
 //     return data.sources || [];
 //   };
 
-//   // POST /api/ask -> { answer, citations }
-//   const sendChatMessage = async (question, history) => {
-//     const validUrls = urls.filter((u) => u.trim());
-//     const payload = { urls: validUrls, question };
+//   const sendChatMessageStream = async (validUrls, question, history, { onToken, onCitations }) => {
+//     const payload = { urls: validUrls, question, history };
 
-//     const res = await fetch("http://localhost:8000/api/ask", {
+//     const res = await fetch("http://localhost:8000/api/ask/stream", {
 //       method: "POST",
 //       headers: { "Content-Type": "application/json" },
 //       body: JSON.stringify(payload),
@@ -102,8 +123,27 @@
 //       const text = await res.text();
 //       throw new Error(`Ask failed: ${res.status} ${text}`);
 //     }
-//     const data = await res.json();
-//     return { answer: data.answer || "", citations: data.citations || [] };
+
+//     const reader = res.body.getReader();
+//     const decoder = new TextDecoder();
+//     let buffer = "";
+
+//     while (true) {
+//       const { done, value } = await reader.read();
+//       if (done) break;
+//       buffer += decoder.decode(value, { stream: true });
+//       const lines = buffer.split("\n");
+//       buffer = lines.pop() || "";
+
+//       for (const line of lines) {
+//         if (line.startsWith("data: ")) {
+//           const data = JSON.parse(line.slice(6));
+//           if (data.type === "token" || data.type === "error") onToken(data.text);
+//           else if (data.type === "citations") onCitations(data.citations);
+//           else if (data.type === "done") return;
+//         }
+//       }
+//     }
 //   };
 
 //   const handleSendMessage = async (e) => {
@@ -123,32 +163,99 @@
 //     setIsSending(true);
 //     setError(null);
 
+//     const assistantMsg = {
+//       id: Date.now() + 1,
+//       role: "assistant",
+//       content: "",
+//       citations: [],
+//     };
+//     setMessages((prev) => [...prev, assistantMsg]);
+
 //     try {
-//       const history = updatedMessages.map(({ role, content }) => ({
-//         role,
-//         content,
-//       }));
-//       const result = await sendChatMessage(inputMessage, history);
-//       const assistantMsg = {
-//         id: Date.now() + 1,
-//         role: "assistant",
-//         content: result.answer,
-//         citations: result.citations || [],
-//       };
-//       setMessages((prev) => [...prev, assistantMsg]);
-//     } catch (err) {
-//       setMessages((prev) => [
-//         ...prev,
-//         {
-//           id: Date.now() + 1,
-//           role: "assistant",
-//           content: `Error: ${err.message}`,
-//           citations: [],
+//       const validUrls = urls.filter((u) => u.trim());
+//       const history = messages.slice(-6).map(({ role, content }) => ({ role, content }));
+//       await sendChatMessageStream(validUrls, userMsg.content, history, {
+//         onToken: (token) => {
+//           setMessages((prev) => {
+//             const msgs = [...prev];
+//             const last = { ...msgs[msgs.length - 1] };
+//             last.content += token;
+//             msgs[msgs.length - 1] = last;
+//             return msgs;
+//           });
 //         },
-//       ]);
+//         onCitations: (citations) => {
+//           setMessages((prev) => {
+//             const msgs = [...prev];
+//             const last = { ...msgs[msgs.length - 1] };
+//             last.citations = citations;
+//             msgs[msgs.length - 1] = last;
+//             return msgs;
+//           });
+//         },
+//       });
+//     } catch (err) {
+//       setMessages((prev) => {
+//         const msgs = [...prev];
+//         const last = { ...msgs[msgs.length - 1] };
+//         last.content = `Error: ${err.message}`;
+//         msgs[msgs.length - 1] = last;
+//         return msgs;
+//       });
 //     } finally {
 //       setIsSending(false);
 //     }
+//   };
+
+//   // Custom renderer for ReactMarkdown to handle Tailwind styling gracefully
+//   const MarkdownComponents = {
+//     code({ node, inline, className, children, ...props }) {
+//       const match = /language-(\w+)/.exec(className || "");
+//       return !inline && match ? (
+//         <SyntaxHighlighter
+//           style={vscDarkPlus}
+//           language={match[1]}
+//           PreTag="div"
+//           className="rounded-lg my-2 !bg-slate-950 border border-slate-800"
+//           {...props}
+//         >
+//           {String(children).replace(/\n$/, "")}
+//         </SyntaxHighlighter>
+//       ) : (
+//         <code
+//           className="bg-slate-800 px-1.5 py-0.5 rounded text-cyan-300 text-sm font-mono"
+//           {...props}
+//         >
+//           {children}
+//         </code>
+//       );
+//     },
+//     h1: ({ node, ...props }) => (
+//       <h1 className="text-2xl font-bold mt-4 mb-2 text-slate-100" {...props} />
+//     ),
+//     h2: ({ node, ...props }) => (
+//       <h2 className="text-xl font-bold mt-4 mb-2 text-slate-100" {...props} />
+//     ),
+//     h3: ({ node, ...props }) => (
+//       <h3 className="text-lg font-bold mt-3 mb-2 text-slate-100" {...props} />
+//     ),
+//     ul: ({ node, ...props }) => (
+//       <ul className="list-disc list-inside my-2 space-y-1" {...props} />
+//     ),
+//     ol: ({ node, ...props }) => (
+//       <ol className="list-decimal list-inside my-2 space-y-1" {...props} />
+//     ),
+//     a: ({ node, ...props }) => (
+//       <a
+//         className="text-cyan-400 hover:underline"
+//         target="_blank"
+//         rel="noopener noreferrer"
+//         {...props}
+//       />
+//     ),
+//     p: ({ node, ...props }) => (
+//       <p className="mb-2 last:mb-0 leading-relaxed" {...props} />
+//     ),
 //   };
 
 //   return (
@@ -197,7 +304,7 @@
 //                         value={url}
 //                         onChange={(e) => handleUrlChange(index, e.target.value)}
 //                         placeholder="Paste URL here..."
-//                         className="w-full bg-transparent text-sm text-slate-300 placeholder:text-slate-600 focus:outline-none"
+//                         className="w-full bg-transparent text-base text-slate-300 placeholder:text-slate-600 focus:outline-none"
 //                         onClick={(e) => e.stopPropagation()}
 //                       />
 //                     </div>
@@ -231,7 +338,7 @@
 
 //             <button
 //               onClick={handleAddUrl}
-//               className="mt-4 w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-slate-700 py-3 text-sm text-slate-500 hover:text-cyan-400 hover:border-cyan-500/50 hover:bg-cyan-500/5 transition-all duration-200"
+//               className="mt-4 w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-slate-700 py-3 text-base text-slate-500 hover:text-cyan-400 hover:border-cyan-500/50 hover:bg-cyan-500/5 transition-all duration-200"
 //             >
 //               <svg
 //                 className="w-4 h-4"
@@ -252,7 +359,7 @@
 //             <button
 //               onClick={handleAnalyze}
 //               disabled={isProcessing || !urls[0]}
-//               className="mt-4 w-full rounded-lg bg-cyan-500 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2"
+//               className="mt-4 w-full rounded-lg bg-cyan-500 py-3 text-base font-semibold text-slate-950 shadow-lg shadow-cyan-500/20 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2"
 //             >
 //               {isProcessing ? (
 //                 <>
@@ -405,29 +512,111 @@
 //                   {messages.map((message) => (
 //                     <div
 //                       key={message.id}
-//                       className={`flex gap-4 ${message.role === "user" ? "flex-row-reverse" : ""}`}
+//                       className={`group flex gap-4 ${message.role === "user" ? "flex-row-reverse" : ""}`}
 //                     >
+//                       {/* Only render Avatar for assistant */}
+//                       {message.role === "assistant" && (
+//                         <div className="h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold bg-cyan-500/20 text-cyan-400">
+//                           B
+//                         </div>
+//                       )}
+
 //                       <div
-//                         className={`h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold ${
-//                           message.role === "assistant"
-//                             ? "bg-cyan-500/20 text-cyan-400"
-//                             : "bg-slate-700 text-slate-300"
-//                         }`}
-//                       >
-//                         {message.role === "assistant" ? "B" : "U"}
-//                       </div>
-//                       <div
-//                         className={`flex-1 max-w-3xl ${message.role === "user" ? "text-right" : ""}`}
+//                         className={`flex-1 max-w-3xl flex flex-col ${message.role === "user" ? "items-end" : "items-start"}`}
 //                       >
 //                         <div
-//                           className={`inline-block rounded-2xl px-5 py-3 text-base leading-relaxed whitespace-pre-wrap break-words ${
+//                           className={`inline-block rounded-2xl px-5 py-3 text-base leading-relaxed break-words ${
 //                             message.role === "assistant"
-//                               ? "bg-slate-900 border border-slate-800 text-slate-300 text-left"
-//                               : "bg-cyan-500 text-slate-950 text-left"
+//                               ? "bg-slate-900 border border-slate-800 text-slate-300 w-full"
+//                               : "bg-cyan-500 text-slate-950 whitespace-pre-wrap"
 //                           }`}
 //                         >
-//                           {message.content}
+//                           {message.role === "assistant" ? (
+//                             <ReactMarkdown
+//                               remarkPlugins={[remarkGfm, remarkMath]}
+//                               rehypePlugins={[rehypeKatex]}
+//                               components={MarkdownComponents}
+//                             >
+//                               {message.content}
+//                             </ReactMarkdown>
+//                           ) : (
+//                             message.content
+//                           )}
 //                         </div>
+
+//                         {/* Action Buttons Container */}
+//                         <div
+//                           className={`flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}
+//                         >
+//                           {/* Copy Button */}
+//                           <button
+//                             onClick={() =>
+//                               handleCopy(message.content, message.id)
+//                             }
+//                             className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-cyan-400 transition-colors"
+//                           >
+//                             {copiedId === message.id ? (
+//                               <>
+//                                 <svg
+//                                   className="w-3.5 h-3.5"
+//                                   fill="none"
+//                                   stroke="currentColor"
+//                                   viewBox="0 0 24 24"
+//                                 >
+//                                   <path
+//                                     strokeLinecap="round"
+//                                     strokeLinejoin="round"
+//                                     strokeWidth={2}
+//                                     d="M5 13l4 4L19 7"
+//                                   />
+//                                 </svg>
+//                                 Copied!
+//                               </>
+//                             ) : (
+//                               <>
+//                                 <svg
+//                                   className="w-3.5 h-3.5"
+//                                   fill="none"
+//                                   stroke="currentColor"
+//                                   viewBox="0 0 24 24"
+//                                 >
+//                                   <path
+//                                     strokeLinecap="round"
+//                                     strokeLinejoin="round"
+//                                     strokeWidth={2}
+//                                     d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+//                                   />
+//                                 </svg>
+//                                 Copy
+//                               </>
+//                             )}
+//                           </button>
+
+//                           {/* Edit Button (User Only) */}
+//                           {message.role === "user" && (
+//                             <button
+//                               onClick={() => handleEdit(message.content)}
+//                               className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-cyan-400 transition-colors mr-2"
+//                             >
+//                               <svg
+//                                 className="w-3.5 h-3.5"
+//                                 fill="none"
+//                                 stroke="currentColor"
+//                                 viewBox="0 0 24 24"
+//                               >
+//                                 <path
+//                                   strokeLinecap="round"
+//                                   strokeLinejoin="round"
+//                                   strokeWidth={2}
+//                                   d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+//                                 />
+//                               </svg>
+//                               Edit
+//                             </button>
+//                           )}
+//                         </div>
+
+//                         {/* Citations */}
 //                         {message.citations && message.citations.length > 0 && (
 //                           <div className="flex flex-wrap gap-2 mt-2">
 //                             {message.citations.map((citation, idx) => (
@@ -460,31 +649,6 @@
 //                       </div>
 //                     </div>
 //                   ))}
-//                   {isSending && (
-//                     <div className="flex gap-4">
-//                       <div className="h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold bg-cyan-500/20 text-cyan-400">
-//                         B
-//                       </div>
-//                       <div className="flex-1 max-w-3xl">
-//                         <div className="inline-block rounded-2xl px-5 py-3 bg-slate-900 border border-slate-800">
-//                           <div className="flex gap-1.5">
-//                             <span
-//                               className="w-2 h-2 rounded-full bg-slate-500 animate-bounce"
-//                               style={{ animationDelay: "0ms" }}
-//                             ></span>
-//                             <span
-//                               className="w-2 h-2 rounded-full bg-slate-500 animate-bounce"
-//                               style={{ animationDelay: "150ms" }}
-//                             ></span>
-//                             <span
-//                               className="w-2 h-2 rounded-full bg-slate-500 animate-bounce"
-//                               style={{ animationDelay: "300ms" }}
-//                             ></span>
-//                           </div>
-//                         </div>
-//                       </div>
-//                     </div>
-//                   )}
 //                   <div ref={chatEndRef} />
 //                 </div>
 
@@ -507,7 +671,7 @@
 //                         placeholder="Ask anything about the content..."
 //                         rows={1}
 //                         disabled={isSending}
-//                         className="flex-1 bg-transparent px-3 py-2.5 text-sm text-white placeholder:text-slate-500 resize-none focus:outline-none max-h-32 disabled:opacity-50"
+//                         className="flex-1 bg-transparent px-3 py-2.5 text-base text-white placeholder:text-slate-500 resize-none focus:outline-none max-h-32 disabled:opacity-50"
 //                         style={{ minHeight: "44px" }}
 //                       />
 //                       <button
@@ -546,7 +710,7 @@
 
 // export default Ask;
 
-//new code with formatresponse
+// New Ask.js with in-place editing and improved scrolling  SSE support
 
 import React, { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
@@ -569,15 +733,26 @@ const Ask = () => {
   const [inputMessage, setInputMessage] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [copiedId, setCopiedId] = useState(null);
+
+  // New state for in-place editing
+  const [editingId, setEditingId] = useState(null);
+  const [editValue, setEditValue] = useState("");
+
+  // Refs for scrolling logic
+  const chatContainerRef = useRef(null);
   const chatEndRef = useRef(null);
 
+  // Scroll only the chat container to avoid outer page scrolling
   const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop =
+        chatContainerRef.current.scrollHeight;
+    }
   };
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, isSending]);
 
   const handleCopy = async (text, id) => {
     try {
@@ -589,8 +764,33 @@ const Ask = () => {
     }
   };
 
-  const handleEdit = (text) => {
-    setInputMessage(text);
+  const handleStartEdit = (id, content) => {
+    setEditingId(id);
+    setEditValue(content);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditValue("");
+  };
+
+  const handleSaveEdit = async (id) => {
+    if (!editValue.trim() || isSending) return;
+
+    // Find where we are editing and slice the history up to this point
+    const msgIndex = messages.findIndex((m) => m.id === id);
+    if (msgIndex === -1) return;
+
+    const updatedMessages = messages.slice(0, msgIndex);
+    const editedMsg = { ...messages[msgIndex], content: editValue };
+    updatedMessages.push(editedMsg);
+
+    setMessages(updatedMessages);
+    setEditingId(null);
+    setEditValue("");
+
+    // Trigger sending the newly edited conversation
+    await triggerAssistantResponse(updatedMessages, editValue);
   };
 
   const handleAddUrl = () => {
@@ -659,11 +859,15 @@ const Ask = () => {
     return data.sources || [];
   };
 
-  const sendChatMessage = async (question, history) => {
-    const validUrls = urls.filter((u) => u.trim());
-    const payload = { urls: validUrls, question };
+  const sendChatMessageStream = async (
+    validUrls,
+    question,
+    history,
+    { onToken, onCitations },
+  ) => {
+    const payload = { urls: validUrls, question, history };
 
-    const res = await fetch("http://localhost:8000/api/ask", {
+    const res = await fetch("http://localhost:8000/api/ask/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -672,8 +876,81 @@ const Ask = () => {
       const text = await res.text();
       throw new Error(`Ask failed: ${res.status} ${text}`);
     }
-    const data = await res.json();
-    return { answer: data.answer || "", citations: data.citations || [] };
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const data = JSON.parse(line.slice(6));
+          if (data.type === "token" || data.type === "error")
+            onToken(data.text);
+          else if (data.type === "citations") onCitations(data.citations);
+          else if (data.type === "done") return;
+        }
+      }
+    }
+  };
+
+  // Separated streaming logic to reuse for both new messages and edits
+  const triggerAssistantResponse = async (currentMessages, userText) => {
+    setIsSending(true);
+    setError(null);
+
+    const assistantMsg = {
+      id: Date.now() + 1,
+      role: "assistant",
+      content: "",
+      citations: [],
+    };
+
+    setMessages((prev) => [...prev, assistantMsg]);
+
+    try {
+      const validUrls = urls.filter((u) => u.trim());
+      const history = currentMessages
+        .slice(-6)
+        .map(({ role, content }) => ({ role, content }));
+
+      await sendChatMessageStream(validUrls, userText, history, {
+        onToken: (token) => {
+          setMessages((prev) => {
+            const msgs = [...prev];
+            const last = { ...msgs[msgs.length - 1] };
+            last.content += token;
+            msgs[msgs.length - 1] = last;
+            return msgs;
+          });
+        },
+        onCitations: (citations) => {
+          setMessages((prev) => {
+            const msgs = [...prev];
+            const last = { ...msgs[msgs.length - 1] };
+            last.citations = citations;
+            msgs[msgs.length - 1] = last;
+            return msgs;
+          });
+        },
+      });
+    } catch (err) {
+      setMessages((prev) => {
+        const msgs = [...prev];
+        const last = { ...msgs[msgs.length - 1] };
+        last.content = `Error: ${err.message}`;
+        msgs[msgs.length - 1] = last;
+        return msgs;
+      });
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleSendMessage = async (e) => {
@@ -690,38 +967,10 @@ const Ask = () => {
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     setInputMessage("");
-    setIsSending(true);
-    setError(null);
 
-    try {
-      const history = updatedMessages.map(({ role, content }) => ({
-        role,
-        content,
-      }));
-      const result = await sendChatMessage(userMsg.content, history);
-      const assistantMsg = {
-        id: Date.now() + 1,
-        role: "assistant",
-        content: result.answer,
-        citations: result.citations || [],
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          role: "assistant",
-          content: `Error: ${err.message}`,
-          citations: [],
-        },
-      ]);
-    } finally {
-      setIsSending(false);
-    }
+    await triggerAssistantResponse(updatedMessages, userMsg.content);
   };
 
-  // Custom renderer for ReactMarkdown to handle Tailwind styling gracefully
   const MarkdownComponents = {
     code({ node, inline, className, children, ...props }) {
       const match = /language-(\w+)/.exec(className || "");
@@ -1021,14 +1270,19 @@ const Ask = () => {
             <div className="flex flex-col h-[calc(100vh-4rem)]">
               {/* Chat Section */}
               <div className="flex-1 flex flex-col min-h-0">
-                {/* Messages */}
-                <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+                {/* Messages Container with Custom Ref */}
+                <div
+                  ref={chatContainerRef}
+                  className="flex-1 overflow-y-auto px-6 py-6 space-y-6"
+                >
                   {messages.map((message) => (
                     <div
                       key={message.id}
-                      className={`group flex gap-4 ${message.role === "user" ? "flex-row-reverse" : ""}`}
+                      className={`group flex gap-4 ${
+                        message.role === "user" ? "flex-row-reverse" : ""
+                      }`}
                     >
-                      {/* Only render Avatar for assistant */}
+                      {/* Avatar */}
                       {message.role === "assistant" && (
                         <div className="h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold bg-cyan-500/20 text-cyan-400">
                           B
@@ -1036,58 +1290,149 @@ const Ask = () => {
                       )}
 
                       <div
-                        className={`flex-1 max-w-3xl flex flex-col ${message.role === "user" ? "items-end" : "items-start"}`}
+                        className={`flex-1 max-w-3xl flex flex-col ${
+                          message.role === "user" ? "items-end" : "items-start"
+                        }`}
                       >
-                        <div
-                          className={`inline-block rounded-2xl px-5 py-3 text-base leading-relaxed break-words ${
-                            message.role === "assistant"
-                              ? "bg-slate-900 border border-slate-800 text-slate-300 w-full"
-                              : "bg-cyan-500 text-slate-950 whitespace-pre-wrap"
-                          }`}
-                        >
-                          {message.role === "assistant" ? (
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm, remarkMath]}
-                              rehypePlugins={[rehypeKatex]}
-                              components={MarkdownComponents}
-                            >
-                              {message.content}
-                            </ReactMarkdown>
-                          ) : (
-                            message.content
-                          )}
-                        </div>
-
-                        {/* Action Buttons Container */}
-                        <div
-                          className={`flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}
-                        >
-                          {/* Copy Button */}
-                          <button
-                            onClick={() =>
-                              handleCopy(message.content, message.id)
-                            }
-                            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-cyan-400 transition-colors"
+                        {/* Message Bubble or Edit Input */}
+                        {editingId === message.id ? (
+                          <div className="flex flex-col gap-2 w-full">
+                            <textarea
+                              className="w-full bg-slate-900 text-slate-200 border border-cyan-500/50 rounded-2xl p-4 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 resize-none text-base"
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              rows={4}
+                            />
+                            <div className="flex justify-end gap-2 mt-1">
+                              <button
+                                onClick={handleCancelEdit}
+                                className="text-xs px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleSaveEdit(message.id)}
+                                className="text-xs px-4 py-2 rounded-lg bg-cyan-500 text-slate-950 hover:bg-cyan-400 font-medium transition-colors"
+                              >
+                                Save & Submit
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            className={`inline-block rounded-2xl px-5 py-3 text-base leading-relaxed break-words ${
+                              message.role === "assistant"
+                                ? "bg-slate-900 border border-slate-800 text-slate-300 w-full"
+                                : "bg-cyan-500 text-slate-950 whitespace-pre-wrap"
+                            }`}
                           >
-                            {copiedId === message.id ? (
+                            {message.role === "assistant" ? (
                               <>
-                                <svg
-                                  className="w-3.5 h-3.5"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M5 13l4 4L19 7"
-                                  />
-                                </svg>
-                                Copied!
+                                {/* Loading dots animation before receiving content */}
+                                {message.content === "" &&
+                                isSending &&
+                                message.id ===
+                                  messages[messages.length - 1]?.id ? (
+                                  <div className="flex items-center gap-1.5 h-6 px-1">
+                                    <span
+                                      className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"
+                                      style={{ animationDelay: "0ms" }}
+                                    ></span>
+                                    <span
+                                      className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"
+                                      style={{ animationDelay: "150ms" }}
+                                    ></span>
+                                    <span
+                                      className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"
+                                      style={{ animationDelay: "300ms" }}
+                                    ></span>
+                                  </div>
+                                ) : (
+                                  <div className="relative">
+                                    <ReactMarkdown
+                                      remarkPlugins={[remarkGfm, remarkMath]}
+                                      rehypePlugins={[rehypeKatex]}
+                                      components={MarkdownComponents}
+                                    >
+                                      {message.content}
+                                    </ReactMarkdown>
+
+                                    {/* Blinking cursor at the end of text during generation */}
+                                    {isSending &&
+                                      message.id ===
+                                        messages[messages.length - 1]?.id && (
+                                        <span className="inline-block w-2.5 h-4 ml-1 bg-cyan-400 rounded-sm animate-pulse"></span>
+                                      )}
+                                  </div>
+                                )}
                               </>
                             ) : (
-                              <>
+                              message.content
+                            )}
+                          </div>
+                        )}
+
+                        {/* Action Buttons Container */}
+                        {editingId !== message.id && (
+                          <div
+                            className={`flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${
+                              message.role === "user"
+                                ? "flex-row-reverse"
+                                : "flex-row"
+                            }`}
+                          >
+                            {/* Copy Button */}
+                            <button
+                              onClick={() =>
+                                handleCopy(message.content, message.id)
+                              }
+                              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-cyan-400 transition-colors"
+                            >
+                              {copiedId === message.id ? (
+                                <>
+                                  <svg
+                                    className="w-3.5 h-3.5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M5 13l4 4L19 7"
+                                    />
+                                  </svg>
+                                  Copied!
+                                </>
+                              ) : (
+                                <>
+                                  <svg
+                                    className="w-3.5 h-3.5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                                    />
+                                  </svg>
+                                  Copy
+                                </>
+                              )}
+                            </button>
+
+                            {/* In-Place Edit Button (User Only) */}
+                            {message.role === "user" && !isSending && (
+                              <button
+                                onClick={() =>
+                                  handleStartEdit(message.id, message.content)
+                                }
+                                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-cyan-400 transition-colors mr-2"
+                              >
                                 <svg
                                   className="w-3.5 h-3.5"
                                   fill="none"
@@ -1098,37 +1443,14 @@ const Ask = () => {
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
                                     strokeWidth={2}
-                                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                                   />
                                 </svg>
-                                Copy
-                              </>
+                                Edit
+                              </button>
                             )}
-                          </button>
-
-                          {/* Edit Button (User Only) */}
-                          {message.role === "user" && (
-                            <button
-                              onClick={() => handleEdit(message.content)}
-                              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-cyan-400 transition-colors mr-2"
-                            >
-                              <svg
-                                className="w-3.5 h-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                />
-                              </svg>
-                              Edit
-                            </button>
-                          )}
-                        </div>
+                          </div>
+                        )}
 
                         {/* Citations */}
                         {message.citations && message.citations.length > 0 && (
@@ -1163,31 +1485,6 @@ const Ask = () => {
                       </div>
                     </div>
                   ))}
-                  {isSending && (
-                    <div className="flex gap-4">
-                      <div className="h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold bg-cyan-500/20 text-cyan-400">
-                        B
-                      </div>
-                      <div className="flex-1 max-w-3xl">
-                        <div className="inline-block rounded-2xl px-5 py-3 bg-slate-900 border border-slate-800">
-                          <div className="flex gap-1.5">
-                            <span
-                              className="w-2 h-2 rounded-full bg-slate-500 animate-bounce"
-                              style={{ animationDelay: "0ms" }}
-                            ></span>
-                            <span
-                              className="w-2 h-2 rounded-full bg-slate-500 animate-bounce"
-                              style={{ animationDelay: "150ms" }}
-                            ></span>
-                            <span
-                              className="w-2 h-2 rounded-full bg-slate-500 animate-bounce"
-                              style={{ animationDelay: "300ms" }}
-                            ></span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                   <div ref={chatEndRef} />
                 </div>
 

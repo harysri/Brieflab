@@ -13,7 +13,7 @@
   </p>
 </div>
 
-![Home Page Screenshot](./screenshots/home.png)
+![](./screenshots/home.png)
 
 ---
 

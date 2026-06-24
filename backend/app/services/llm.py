@@ -15,6 +15,9 @@ from langchain_core.prompts import PromptTemplate
 from app.core.config import settings
 from app.services.qdrant_service import RetrievedChunk
 
+MAX_HISTORY_TURNS = 3
+HISTORY_CHAR_LIMIT = 2000
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,11 +66,11 @@ def summarize(text: str) -> str:
 QA_PROMPT = PromptTemplate.from_template(
     """You are BriefLab, a precise question-answering assistant.
 
-Answer the user's question using ONLY the context provided below. 
+Answer the user's question using ONLY the context provided below.
 If the answer is not present in the context, say "The provided content does not contain enough information to answer this question."
 Do not invent facts. Do not reference external knowledge.
 
-Context (retrieved excerpts):
+{history}Context (retrieved excerpts):
 {context}
 
 ---
@@ -77,12 +80,41 @@ Answer (be concise and direct, cite the source URL when relevant):"""
 )
 
 
-def answer_question(question: str, chunks: List[RetrievedChunk]) -> str:
+def _format_history(history: list) -> str:
+    """Format conversation history, keeping last N exchanges within a char limit."""
+    if not history:
+        return ""
+
+    tail = history[-MAX_HISTORY_TURNS * 2:]
+
+    lines = []
+    total_chars = 0
+    for entry in tail:
+        if isinstance(entry, dict):
+            role = entry.get("role", "unknown").capitalize()
+            content = entry.get("content", "")
+        else:
+            role = getattr(entry, "role", "unknown").capitalize()
+            content = getattr(entry, "content", "")
+        line = f"{role}: {content}"
+        total_chars += len(line)
+        if total_chars > HISTORY_CHAR_LIMIT:
+            break
+        lines.append(line)
+
+    if not lines:
+        return ""
+
+    return "Previous conversation:\n" + "\n".join(lines) + "\n\n"
+
+
+def answer_question(question: str, chunks: List[RetrievedChunk], history: list = None) -> str:
     """Generate a grounded answer from retrieved chunks."""
     if not chunks:
         return "No relevant content was found in the provided sources to answer your question."
 
-    # Build context block — number each excerpt and include its source URL
+    history_block = _format_history(history or [])
+
     context_parts = []
     for i, chunk in enumerate(chunks, 1):
         source_label = chunk.title or chunk.url
@@ -93,5 +125,32 @@ def answer_question(question: str, chunks: List[RetrievedChunk]) -> str:
     llm = _get_llm()
     chain = QA_PROMPT | llm
 
-    result = chain.invoke({"context": context, "question": question})
+    result = chain.invoke({"context": context, "question": question, "history": history_block})
     return result.strip()
+
+
+async def answer_question_stream(question: str, chunks: List[RetrievedChunk], history: list = None):
+    """Async generator that streams LLM answer tokens one by one."""
+    if not chunks:
+        yield "No relevant content was found in the provided sources to answer your question."
+        return
+
+    history_block = _format_history(history or [])
+
+    context_parts = []
+    for i, chunk in enumerate(chunks, 1):
+        source_label = chunk.title or chunk.url
+        context_parts.append(f"[{i}] Source: {source_label}\n{chunk.text}")
+
+    context = "\n\n".join(context_parts)
+
+    llm = _get_llm()
+
+    try:
+        async for token in llm.astream(
+            QA_PROMPT.format(context=context, question=question, history=history_block)
+        ):
+            yield token
+    except Exception as e:
+        logger.error(f"LLM streaming error: {e}")
+        yield f"\n\n[Error during generation: {e}]"

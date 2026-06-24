@@ -1,4 +1,4 @@
-from pydantic import BaseModel, HttpUrl, field_validator
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 from enum import Enum
 
@@ -6,6 +6,11 @@ from enum import Enum
 class SourceType(str, Enum):
     youtube = "youtube"
     article = "article"
+
+
+class HistoryMessage(BaseModel):
+    role: str
+    content: str
 
 
 # ── Request models ────────────────────────────────────────────────────────────
@@ -29,6 +34,7 @@ class AnalyzeRequest(BaseModel):
 class QuestionRequest(BaseModel):
     urls: List[str]
     question: str
+    history: List[HistoryMessage] = []
 
     @field_validator("urls")
     @classmethod

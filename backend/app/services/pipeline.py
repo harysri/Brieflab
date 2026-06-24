@@ -8,8 +8,9 @@ answer_question → embed query → retrieve → generate answer
 """
 
 import asyncio
+import json
 import logging
-from typing import List
+from typing import List, Optional
 
 from app.core.schemas import SourceSummary, AnalyzeResponse, AnswerResponse, Citation
 from app.core.utils import make_doc_id
@@ -137,3 +138,55 @@ async def answer(urls: List[str], question: str) -> AnswerResponse:
     ]
 
     return AnswerResponse(answer=answer_text, citations=citations)
+
+
+def _sse(event_type: str, data) -> str:
+    return "data: " + json.dumps({"type": event_type, **data}) + "\n\n"
+
+
+async def answer_stream(
+    urls: List[str],
+    question: str,
+    history: Optional[List[dict]] = None,
+):
+    """
+    RAG Q&A pipeline with SSE streaming.
+    Yields SSE-formatted strings: token events, then citations, then done.
+    """
+    try:
+        doc_ids = [make_doc_id(url) for url in urls]
+
+        query_vector = await _run_in_executor(embedder.embed_query, question)
+
+        retrieved_chunks = await qdrant_service.search(
+            query_vector=query_vector,
+            doc_ids=doc_ids,
+        )
+
+        if not retrieved_chunks:
+            yield _sse("token", {"text": "The content has not been analyzed yet. Please call /api/analyze first."})
+            yield _sse("citations", {"citations": []})
+            yield _sse("done", {})
+            return
+
+        citations = [
+            Citation(
+                url=chunk.url,
+                source_type=chunk.source_type,
+                title=chunk.title,
+                excerpt=chunk.text[:300] + ("..." if len(chunk.text) > 300 else ""),
+                score=round(chunk.score, 4),
+            )
+            for chunk in retrieved_chunks
+        ]
+
+        async for token in llm.answer_question_stream(question, retrieved_chunks, history):
+            yield _sse("token", {"text": token})
+
+        yield _sse("citations", {"citations": [c.model_dump() for c in citations]})
+        yield _sse("done", {})
+
+    except Exception as e:
+        logger.exception(f"answer_stream error: {e}")
+        yield _sse("error", {"text": f"Server error: {e}"})
+        yield _sse("done", {})

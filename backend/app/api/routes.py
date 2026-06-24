@@ -1,5 +1,6 @@
 # routes.py
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from app.core.schemas import AnalyzeRequest, AnalyzeResponse, QuestionRequest, AnswerResponse
 from app.services import pipeline
@@ -37,7 +38,25 @@ async def ask(request: QuestionRequest):
         return await pipeline.answer(request.urls, request.question)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Q&A error: {str(e)}")
-    
+
+
+@router.post("/ask/stream", summary="Streaming RAG Q&A via SSE")
+async def ask_stream(request: QuestionRequest):
+    """
+    Same as /ask but returns a Server-Sent Events stream.
+    Events: token → citations → done
+    """
+    return StreamingResponse(
+        pipeline.answer_stream(request.urls, request.question, request.history),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 # routes.py  (testing  router)
 
 @router.get("/test-fetch", summary="Debug: test trafilatura from Uvicorn")
