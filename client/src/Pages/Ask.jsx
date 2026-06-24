@@ -710,7 +710,7 @@
 
 // export default Ask;
 
-// New Ask.js with in-place editing and improved scrolling  SSE support
+// New Ask.js with in-place editing and improved scrolling  SSE support and chat history
 
 import React, { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
@@ -721,6 +721,7 @@ import rehypeKatex from "rehype-katex";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import "katex/dist/katex.min.css";
+import ChatScrollButton from "../Components/ChatScrollButton";
 
 const Ask = () => {
   const [urls, setUrls] = useState([""]);
@@ -741,6 +742,7 @@ const Ask = () => {
   // Refs for scrolling logic
   const chatContainerRef = useRef(null);
   const chatEndRef = useRef(null);
+  const inputAreaRef = useRef(null);
 
   // Scroll only the chat container to avoid outer page scrolling
   const scrollToBottom = () => {
@@ -1269,11 +1271,11 @@ const Ask = () => {
             /* Content Area with Chat */
             <div className="flex flex-col h-[calc(100vh-4rem)]">
               {/* Chat Section */}
-              <div className="flex-1 flex flex-col min-h-0">
+              <div className="relative flex-1 flex flex-col min-h-0">
                 {/* Messages Container with Custom Ref */}
                 <div
                   ref={chatContainerRef}
-                  className="flex-1 overflow-y-auto px-6 py-6 space-y-6"
+                  className="relative flex-1 overflow-y-auto px-6 py-6 space-y-6"
                 >
                   {messages.map((message) => (
                     <div
@@ -1488,8 +1490,17 @@ const Ask = () => {
                   <div ref={chatEndRef} />
                 </div>
 
+                {/* Scroll-to-bottom button */}
+                <ChatScrollButton
+                  containerRef={chatContainerRef}
+                  inputRef={inputAreaRef}
+                />
+
                 {/* Input Area */}
-                <div className="border-t border-slate-800/50 bg-slate-950/50 px-6 py-4">
+                <div
+                  ref={inputAreaRef}
+                  className="border-t border-slate-800/50 bg-slate-950/50 px-6 py-4"
+                >
                   <form
                     onSubmit={handleSendMessage}
                     className="max-w-4xl mx-auto"
