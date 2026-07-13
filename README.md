@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>Brieflab</h1>
+  <img src="./assets/brieflab-logo.svg" alt="Brieflab" width="700" />
   <p><strong>Understand any content — YouTube or article — in seconds with AI-powered summaries and RAG-based Q&A.</strong></p>
 
   <p>
@@ -60,7 +60,7 @@ User's Browser (React 19 + Tailwind)
         │
         ├── /api/analyze  →  Extract content (youtube-transcript-api / trafilatura)
         │                  →  Chunk text
-        │                  →  Generate embeddings (HuggingFace Inference API)
+        │                  →  Generate embeddings using bge-m3 via Ollama
         │                  →  Store in Qdrant vector DB
         │                  →  Return summary (Ollama LLM)
         │
