@@ -277,8 +277,6 @@ brieflab/
 
 ---
 
-## Deployment
-
 ### Frontend
 
 ```bash
