@@ -319,9 +319,10 @@ Distributed under the **MIT License**. See `LICENSE` for more information.
 
 ## Author
 
-**Brieflab** — Built with ❤️
+**Srihari Satheeshan**
 
-For questions, feedback, or collaboration, please open an issue on GitHub.
+- GitHub: [@harysri](https://github.com/harysri)
+- Email: sriharisatheeshan820@gmail.com
 
 ---
 
