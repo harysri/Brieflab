@@ -277,24 +277,6 @@ brieflab/
 
 ---
 
-### Frontend
-
-```bash
-cd client
-npm run build
-```
-
-Deploy the `client/dist/` folder to any static host (Vercel, Netlify, Cloudflare Pages).
-
-### Backend
-
-```bash
-cd backend
-docker build -t Brieflab-api .
-```
-
-Deploy as a container to any cloud provider (Railway, Fly.io, AWS ECS, etc.).
-
 ### Requirements
 
 - Qdrant cloud instance or self-hosted
