@@ -8,6 +8,13 @@ class SourceType(str, Enum):
     article = "article"
 
 
+class Sentiment(str, Enum):
+    positive = "positive"
+    negative = "negative"
+    neutral = "neutral"
+    mixed = "mixed"
+
+
 class HistoryMessage(BaseModel):
     role: str
     content: str
@@ -63,6 +70,9 @@ class SourceSummary(BaseModel):
     title: Optional[str] = None
     summary: str
     chunk_count: int
+    sentiment: Optional[Sentiment] = None
+    sentiment_score: Optional[float] = None
+    topics: List[str] = []
 
 
 class AnalyzeResponse(BaseModel):

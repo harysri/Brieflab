@@ -32,6 +32,7 @@ Built for researchers, students, and professionals who need to process large amo
 - **Multi-URL Workspace** — Combine multiple sources into one workspace. Cross-reference insights across videos and articles.
 - **Sentiment & Topic Detection** — Automatically detect main topics, sentiment, and tone of any content.
 - **Cited Responses** — Every answer includes references back to the source for verification.
+- **Export** — Download a workspace (sources, summaries, sentiment/topics, and chat) as Markdown or PDF.
 - **Any Device, Anytime** — Responsive design works on desktop, tablet, and mobile.
 
 ---
@@ -46,6 +47,7 @@ Built for researchers, students, and professionals who need to process large amo
 | **Vector Database**    | Qdrant                                                                          |
 | **Content Extraction** | youtube-transcript-api, trafilatura                                             |
 | **Markdown Rendering** | react-markdown, remark-gfm, remark-math, rehype-katex, react-syntax-highlighter |
+| **Export**             | jsPDF (client-side Markdown & PDF export)                                       |
 
 ---
 
@@ -290,7 +292,6 @@ brieflab/
 - [ ] User authentication (OAuth / JWT)
 - [ ] Persistent workspace sessions (save & resume)
 - [ ] PDF document upload support
-- [ ] Export summaries to PDF / Markdown
 - [ ] Dark/light theme toggle
 - [ ] History of past analyses
 - [ ] i18n / multi-language support

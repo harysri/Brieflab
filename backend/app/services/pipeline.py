@@ -54,10 +54,13 @@ async def _process_single_url(url: str) -> SourceSummary:
     # ── 4. Upsert into Qdrant ─────────────────────────────────────────────────
     await qdrant_service.upsert_chunks(chunks, embeddings)
 
-    # ── 5. Summarize ──────────────────────────────────────────────────────────
-    # Use the full text (not chunks) for a coherent summary
-    logger.info(f"Summarizing content for: {url}")
-    summary = await _run_in_executor(llm.summarize, content.text)
+    # ── 5. Summarize + detect sentiment/topics ────────────────────────────────
+    # Use the full text (not chunks) for a coherent summary and analysis.
+    logger.info(f"Summarizing and analyzing content for: {url}")
+    summary, analytics = await asyncio.gather(
+        _run_in_executor(llm.summarize, content.text),
+        _run_in_executor(llm.analyze_content, content.text),
+    )
 
     return SourceSummary(
         url=url,
@@ -65,6 +68,9 @@ async def _process_single_url(url: str) -> SourceSummary:
         title=content.title,
         summary=summary,
         chunk_count=len(chunks),
+        sentiment=analytics.sentiment,
+        sentiment_score=analytics.sentiment_score,
+        topics=analytics.topics,
     )
 
 

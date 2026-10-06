@@ -158,6 +158,7 @@ Articles → Trafilatura              (native fetcher — avoids bot blocks)
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -241,22 +242,43 @@ def _extract_youtube(url: str) -> ExtractedContent:
 
 # ── Article ───────────────────────────────────────────────────────────────────
 
-def _extract_article(url: str) -> ExtractedContent:
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+def _download_html(url: str) -> str:
+    """
+    Download a page's HTML. Tries httpx first, then falls back to trafilatura's
+    own fetcher — some sites answer our browser headers with 403 while
+    trafilatura's HTTP stack is accepted.
+    """
     try:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            )
-        }
-        with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers) as client:
+        with httpx.Client(timeout=30.0, follow_redirects=True, headers=_BROWSER_HEADERS) as client:
             response = client.get(url)
             response.raise_for_status()
-            downloaded = response.text
+            if response.text and response.text.strip():
+                return response.text
+    except httpx.HTTPStatusError as e:
+        logger.warning(f"httpx got HTTP {e.response.status_code} for {url}; trying trafilatura fetcher")
+    except httpx.RequestError as e:
+        logger.warning(f"httpx request error for {url} ({e}); trying trafilatura fetcher")
 
-        if not downloaded:
-            raise ExtractionError(f"Could not download URL: {url}")
+    downloaded = trafilatura.fetch_url(url)
+    if not downloaded:
+        raise ExtractionError(f"Could not download URL: {url}")
+    return downloaded
+
+
+def _extract_article(url: str) -> ExtractedContent:
+    try:
+        downloaded = _download_html(url)
 
         metadata = trafilatura.extract_metadata(downloaded)
         title = metadata.title if metadata and metadata.title else None
@@ -274,10 +296,6 @@ def _extract_article(url: str) -> ExtractedContent:
 
     except ExtractionError:
         raise
-    except httpx.HTTPStatusError as e:
-        raise ExtractionError(f"HTTP {e.response.status_code} fetching {url}") from e
-    except httpx.RequestError as e:
-        raise ExtractionError(f"Network error fetching {url}: {e}") from e
     except Exception as e:
         raise ExtractionError(f"Article extraction failed for {url}: {e}") from e
 
@@ -291,8 +309,17 @@ def _extract_article(url: str) -> ExtractedContent:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def _normalize_url(url: str) -> str:
+    """Ensure a scheme is present so bare domains like 'example.com' work."""
+    url = (url or "").strip()
+    if url and not re.match(r"^[a-z][a-z0-9+.\-]*://", url, re.IGNORECASE):
+        url = "https://" + url
+    return url
+
+
 def extract(url: str) -> ExtractedContent:
     """Auto-detect URL type and extract content."""
+    url = _normalize_url(url)
     if is_youtube_url(url):
         return _extract_youtube(url)
     return _extract_article(url)

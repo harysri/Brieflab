@@ -6,7 +6,10 @@ Two tasks:
   2. answer(question, chunks) → grounded answer with source attribution
 """
 
+import json
 import logging
+import re
+from dataclasses import dataclass, field
 from typing import List
 
 from langchain_ollama import OllamaLLM
@@ -154,3 +157,110 @@ async def answer_question_stream(question: str, chunks: List[RetrievedChunk], hi
     except Exception as e:
         logger.error(f"LLM streaming error: {e}")
         yield f"\n\n[Error during generation: {e}]"
+
+
+# ── Sentiment & topic detection ───────────────────────────────────────────────
+
+ANALYTICS_MAX_CHARS = 8_000
+
+_VALID_SENTIMENTS = {"positive", "negative", "neutral", "mixed"}
+
+ANALYTICS_PROMPT = PromptTemplate.from_template(
+    """You are BriefLab's content analyst. Analyze the content below and respond with ONLY a JSON object — no markdown, no code fences, no explanation.
+
+The JSON must have exactly these keys:
+{{
+  "sentiment": "positive" | "negative" | "neutral" | "mixed",
+  "sentiment_score": <float from -1.0 (very negative) to 1.0 (very positive)>,
+  "topics": ["topic 1", "topic 2", "topic 3"]
+}}
+
+Rules:
+- "sentiment" must be one of: positive, negative, neutral, mixed.
+- "sentiment_score" reflects the overall tone; 0.0 is neutral.
+- "topics" must contain 3 to 6 short labels (1-3 words each), most important first.
+- Base everything strictly on the content provided.
+
+Content:
+{text}"""
+)
+
+
+@dataclass
+class ContentAnalytics:
+    sentiment: str = "neutral"
+    sentiment_score: float = 0.0
+    topics: List[str] = field(default_factory=list)
+
+
+def _get_json_llm() -> OllamaLLM:
+    """LLM instance constrained to emit valid JSON."""
+    return OllamaLLM(
+        base_url=settings.OLLAMA_BASE_URL,
+        model=settings.LLM_MODEL,
+        temperature=0,
+        num_predict=512,
+        format="json",
+    )
+
+
+def _parse_analytics(raw: str) -> ContentAnalytics:
+    """Parse the LLM's JSON reply defensively, never raising."""
+    if not raw or not raw.strip():
+        return ContentAnalytics()
+
+    text = re.sub(r"```(?:json)?", "", raw, flags=re.IGNORECASE).strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        return ContentAnalytics()
+
+    try:
+        data = json.loads(text[start : end + 1])
+    except (json.JSONDecodeError, ValueError):
+        return ContentAnalytics()
+
+    if not isinstance(data, dict):
+        return ContentAnalytics()
+
+    sentiment = str(data.get("sentiment", "")).strip().lower()
+    if sentiment not in _VALID_SENTIMENTS:
+        sentiment = "neutral"
+
+    try:
+        score = float(data.get("sentiment_score", 0.0))
+    except (TypeError, ValueError):
+        score = 0.0
+    score = max(-1.0, min(1.0, score))
+
+    topics: List[str] = []
+    raw_topics = data.get("topics", [])
+    if isinstance(raw_topics, list):
+        for item in raw_topics:
+            label = str(item).strip()
+            if label and label not in topics:
+                topics.append(label)
+
+    return ContentAnalytics(
+        sentiment=sentiment,
+        sentiment_score=round(score, 3),
+        topics=topics[:6],
+    )
+
+
+def analyze_content(text: str) -> ContentAnalytics:
+    """Detect the overall sentiment, tone score, and key topics of a piece of content."""
+    if not text or not text.strip():
+        return ContentAnalytics()
+
+    truncated = text[:ANALYTICS_MAX_CHARS]
+    if len(text) > ANALYTICS_MAX_CHARS:
+        truncated += "\n\n[Content truncated for brevity...]"
+
+    try:
+        chain = ANALYTICS_PROMPT | _get_json_llm()
+        raw = chain.invoke({"text": truncated})
+    except Exception as e:
+        logger.error(f"Content analytics failed: {e}")
+        return ContentAnalytics()
+
+    return _parse_analytics(raw)
